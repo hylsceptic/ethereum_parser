@@ -29,8 +29,8 @@ def Load_transactions(file_path='transactions.csv'):
 WETH_ADDR = '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2'
 
 UNISWAP_FORKS_ROUTERS = {
-    '0xd9e1cE17f2641f24aE83637ab66a2cca9C378B9F' : 'UniSwapV2',
-    '0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D' : 'SushiSwap',
+    '0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D' : 'UniSwapV2',
+    '0xd9e1cE17f2641f24aE83637ab66a2cca9C378B9F' : 'SushiSwap',
     '0xE6E90bC9F3b95cdB69F48c7bFdd0edE1386b135a' : 'UnicSwapV2'
 }
 WETH_EVT_DEPOSIT = '0xe1fffcc4923d04b559f4d29a8bfc6cda04eb5b0d3c460751c2402c5c5cc9109c'
@@ -65,6 +65,8 @@ def parse_eth_transfer(item):
     filtered_item = {key : item[key] for key in ['hash', 'block_timestamp', 'value', 'from_address', 'to_address']}
     filtered_item['symbol'] = 'ETH'
     filtered_item['value'] /= 1e18
+    filtered_item['decimals'] = 18
+    filtered_item['contract_address'] = 'None'
     return filtered_item
 
 
@@ -90,7 +92,8 @@ def parse_uniswap_trade(item, w3):
     logs = w3.eth.getTransactionReceipt(item['hash'])['logs']
     if logs == []:return None  ## Error encountered during contract execution [Reverted]
 
-    filtered_item = {key : item[key] for key in ['hash', 'block_timestamp', 'from_address']}
+    filtered_item = {key : item[key] for key in ['hash', 'block_timestamp']}
+    filtered_item['send_address'] = item['from_address']
     if (item['input'].startswith('0xc04b8d59') or item['input'].startswith('0x414bf389')
             or item['input'].startswith('0xf28c0498') or item['input'].startswith('0xdb3e2198')):
         filtered_item['dex'] = 'UniswapV3'
@@ -189,7 +192,8 @@ def parse_uniswap_v1_trade(item, w3):
     logs = w3.eth.getTransactionReceipt(item['hash'])['logs']
     if logs == []:return None  ## Error encountered during contract execution [Reverted]
 
-    filtered_item = {key : item[key] for key in ['hash', 'block_timestamp', 'from_address']}
+    filtered_item = {key : item[key] for key in ['hash', 'block_timestamp']}
+    filtered_item['send_address'] = Web3.toChecksumAddress(item['from_address'])
     filtered_item['dex'] = 'UniswapV1'
     
     filtered_item['method_call'] = item['input'][:10]
@@ -198,44 +202,62 @@ def parse_uniswap_v1_trade(item, w3):
     filtered_item['send_value'] = 0
 
     if (item['input'].startswith('0xf39b5b9b')                 # uniswap v1: ethToTokenSwapInput
+        or item['input'].startswith('0x6b1d4db7')              # uniswap v1: ethToTokenSwapOutput
         or item['input'].startswith('0xad65d76d')              # uniswap v1: ethToTokenTransferInput
+        or item['input'].startswith('0x0b573638')              # uniswap v1: ethToTokenTransferOutput
             ):
         filtered_item['send_token'] = 'ETH'
-        filtered_item['send_value'] = item['value'] / 1e18
-        if item['input'].startswith('0xf39b5b9b'):
+        calls = tx_call_trace(item['hash'], client_url)
+        for call in calls:
+            if call['to'] == Web3.toChecksumAddress(item['to_address']):
+                filtered_item['send_value'] += call['value']
+            elif call['to'] == Web3.toChecksumAddress(item['from_address']):
+                filtered_item['send_value'] -= call['value']
+        if item['input'].startswith('0xf39b5b9b') or item['input'].startswith('0x6b1d4db7'):
             filtered_item['receive_address'] = item['from_address']
         else:
             filtered_item['receive_address'] = Web3.toChecksumAddress('0x' + item['input'][162 : 202])
-    elif (item['input'].startswith('0xf552d91b')               # uniswap v1: tokenToTokenTransferInput
-        # or item['input'].startswith('')              # uniswap v1: 
+    elif (item['input'].startswith('0xddf7e1a7')                    # uniswap v1: tokenToTokenSwapInput
+            or item['input'].startswith('0xb040d545')               # uniswap v1: tokenToTokenSwapOutput
+            or item['input'].startswith('0xf552d91b')               # uniswap v1: tokenToTokenTransferInput
+            or item['input'].startswith('0xf3c0efe9')               # uniswap v1: tokenToTokenTransferOutput
             ):
-            if False:
-                ...
+            if item['input'].startswith('0xddf7e1a7') or item['input'].startswith('0xb040d545'):
+                filtered_item['receive_address'] = filtered_item['send_address']
             else:
                 filtered_item['receive_address'] = Web3.toChecksumAddress('0x' + item['input'][290 : 330])
-    elif (item['input'].startswith('0x7237e031')               # uniswap v1: tokenToEthTransferInput
+    elif (item['input'].startswith('0x013efd8b')                    # uniswap v1: tokenToEthSwapOutInput
+            or item['input'].startswith('0x95e3c50b')               # uniswap v1: tokenToEthSwapOutput
+            or item['input'].startswith('0x7237e031')               # uniswap v1: tokenToEthTransferInput
+            or item['input'].startswith('0xd4e4841d')               # uniswap v1: tokenToEthTransferOutput
             ):
-            if False:
-                ...
+            filtered_item['receive_token'] = 'ETH'
+            if item['input'].startswith('0x013efd8b') or item['input'].startswith('0x95e3c50b'):
+                filtered_item['receive_address'] = filtered_item['send_address']
             else:
                 filtered_item['receive_address'] = Web3.toChecksumAddress('0x' + item['input'][226 : 266])
-                filtered_item['receive_token'] = 'ETH'
             calls = tx_call_trace(item['hash'], client_url)
             for call in calls:
                 if call['to'] == filtered_item['receive_address']:
                     filtered_item['receive_value'] += call['value']
 
-    
+
     for tlog in logs:
         if (len(tlog['topics']) >= 3 and tlog['topics'][0].hex() == ERC2_EVT_TRANSFER):
             if Web3.toChecksumAddress('0x' + tlog['topics'][2].hex()[-40:]) == Web3.toChecksumAddress(filtered_item['receive_address']):
                 token_contract = erc20_contract(tlog['address'])
-                filtered_item['receive_token'] = token_contract.functions.symbol().call()
+                if Web3.toChecksumAddress(tlog['address']) == '0x89d24A6b4CcB1B6fAA2625fE562bDD9a23260359':
+                    filtered_item['receive_token'] = 'DAI'
+                else:
+                    filtered_item['receive_token'] = token_contract.functions.symbol().call()
                 filtered_item['receive_value'] += int(tlog['data'], 0) / (10 ** token_contract.functions.decimals().call())
 
             elif Web3.toChecksumAddress('0x' + tlog['topics'][1].hex()[-40:]) == Web3.toChecksumAddress(item['from_address']):
                 token_contract = erc20_contract(tlog['address'])
-                filtered_item['send_token'] = token_contract.functions.symbol().call()
+                if Web3.toChecksumAddress(tlog['address']) == '0x89d24A6b4CcB1B6fAA2625fE562bDD9a23260359':
+                    filtered_item['send_token'] = 'DAI'
+                else:
+                    filtered_item['send_token'] = token_contract.functions.symbol().call()
                 filtered_item['send_value'] += int(tlog['data'], 0) / (10 ** token_contract.functions.decimals().call())
 
     return filtered_item
@@ -292,12 +314,12 @@ class KafkaExporter:
                 or item['input'].startswith('0xf28c0498')):
             filtered_item = parse_uniswap_trade(item, self.w3)
             dump_result(filtered_item)
-            # if filtered_item is None or filtered_item['dex'] != 'UniswapV3':
-            #     return
 
         elif (item['input'].startswith('0xac9650d8')):
             filtered_items = parse_multi_call(item, w3)
             for filtered_item in filtered_items:
+                if filtered_item is None:
+                    continue
                 print(len(filtered_item.keys()))
                 try:
                     print(filtered_item)
@@ -308,7 +330,11 @@ class KafkaExporter:
                 print()
         
         elif (item['input'].startswith('0xf39b5b9b') or item['input'].startswith('0xad65d76d')
-                or item['input'].startswith('0xf552d91b') or item['input'].startswith('0x7237e031')):
+                or item['input'].startswith('0xf552d91b') or item['input'].startswith('0x7237e031')
+                or item['input'].startswith('0x6b1d4db7') or item['input'].startswith('0x0b573638')
+                or item['input'].startswith('0xd4e4841d') or item['input'].startswith('0x013efd8b')
+                or item['input'].startswith('0x95e3c50b') or item['input'].startswith('0xddf7e1a7')
+                or item['input'].startswith('0xb040d545') or item['input'].startswith('0xf3c0efe9')):
             filtered_item = parse_uniswap_v1_trade(item, w3)
             print(len(filtered_item.keys()))
             try:
@@ -322,6 +348,7 @@ class KafkaExporter:
         else:
             if item['value'] > 0:
                 filtered_item = parse_eth_transfer(item)
+                # print(filtered_item)
             else:
                 return
 

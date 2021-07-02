@@ -8,7 +8,8 @@ import pprint as pp
 from web3_input_decoder import decode_constructor, decode_function
 from erc20_abi import ERC20_ABI
 from uniswap_v2_pair_abi import UNIESWP_V2_PAIR_ABI
-from  call_parser import tx_call_trace
+from call_parser import tx_call_trace
+from erc2_parser import parse_token
 
 from executor.bounded_executor import BoundedExecutor
 from executor.fail_safe_executor import FailSafeExecutor
@@ -164,14 +165,17 @@ def parse_uniswap_trade(item, w3):
     for tlog in logs:
         if (len(tlog['topics']) >= 3 and tlog['topics'][0].hex() == ERC2_EVT_TRANSFER):
             if Web3.toChecksumAddress('0x' + tlog['topics'][2].hex()[-40:]) == Web3.toChecksumAddress(filtered_item['receive_address']):
+                rst, (symbol, dec) = parse_token(Web3.toChecksumAddress(tlog['address']), w3)
+                if not rst: return
                 token_contract = erc20_contract(tlog['address'])
-                filtered_item['receive_token'] = token_contract.functions.symbol().call()
-                filtered_item['receive_value'] += int(tlog['data'], 0) / (10 ** token_contract.functions.decimals().call())
+                filtered_item['receive_token'] = symbol
+                filtered_item['receive_value'] += int(tlog['data'], 0) / (10 ** dec)
 
             elif Web3.toChecksumAddress('0x' + tlog['topics'][1].hex()[-40:]) == Web3.toChecksumAddress(item['from_address']):
-                token_contract = erc20_contract(tlog['address'])
-                filtered_item['send_token'] = token_contract.functions.symbol().call()
-                filtered_item['send_value'] += int(tlog['data'], 0) / (10 ** token_contract.functions.decimals().call())
+                rst, (symbol, dec) = parse_token(Web3.toChecksumAddress(tlog['address']), w3)
+                if not rst: return
+                filtered_item['send_token'] = symbol
+                filtered_item['send_value'] += int(tlog['data'], 0) / (10 ** dec)
 
     return filtered_item
 
@@ -233,39 +237,32 @@ def parse_uniswap_v1_trade(item, w3):
     for tlog in logs:
         if (len(tlog['topics']) >= 3 and tlog['topics'][0].hex() == ERC2_EVT_TRANSFER):
             if Web3.toChecksumAddress('0x' + tlog['topics'][2].hex()[-40:]) == Web3.toChecksumAddress(filtered_item['receive_address']):
-                token_contract = erc20_contract(tlog['address'])
+                rst, (symbol, dec) = parse_token(Web3.toChecksumAddress(tlog['address']), w3)
+                if not rst: return
                 if Web3.toChecksumAddress(tlog['address']) == '0x89d24A6b4CcB1B6fAA2625fE562bDD9a23260359':
                     filtered_item['receive_token'] = 'DAI'
                 else:
-                    filtered_item['receive_token'] = token_contract.functions.symbol().call()
-                filtered_item['receive_value'] += int(tlog['data'], 0) / (10 ** token_contract.functions.decimals().call())
+                    filtered_item['receive_token'] = symbol
+                filtered_item['receive_value'] += int(tlog['data'], 0) / (10 ** dec)
 
             elif Web3.toChecksumAddress('0x' + tlog['topics'][1].hex()[-40:]) == Web3.toChecksumAddress(item['from_address']):
-                token_contract = erc20_contract(tlog['address'])
+                rst, (symbol, dec) = parse_token(Web3.toChecksumAddress(tlog['address']), w3)
+                if not rst: return
                 if Web3.toChecksumAddress(tlog['address']) == '0x89d24A6b4CcB1B6fAA2625fE562bDD9a23260359':
                     filtered_item['send_token'] = 'DAI'
                 else:
-                    filtered_item['send_token'] = token_contract.functions.symbol().call()
-                filtered_item['send_value'] += int(tlog['data'], 0) / (10 ** token_contract.functions.decimals().call())
+                    filtered_item['send_token'] = symbol
+                filtered_item['send_value'] += int(tlog['data'], 0) / (10 ** dec)
 
     return filtered_item
 
 
-
 def parse_erc20_transfer(item, w3):
     address = Web3.toChecksumAddress(item['to_address'])
-    contract = w3.eth.contract(address=address, abi=ERC20_ABI)
     filtered_item = {key : item[key] for key in ['hash', 'block_timestamp', 'from_address']}
-    
-    try:
-        dec = contract.functions.decimals().call()
-        filtered_item['symbol'] = contract.functions.symbol().call()
-    except ValueError as e:
-            print(e)
-            return
-    except:
-        return
-    
+    rst, (symbol, dec) = parse_token(address, w3)
+    if not rst: return
+    filtered_item['symbol'] = symbol
     filtered_item['to_address'] = '0x' + item['input'][34:74]
     filtered_item['value'] = int('0x' + item['input'][74:], 0) / 10 ** dec
     filtered_item['contract_address'] = item['to_address']
@@ -274,7 +271,7 @@ def parse_erc20_transfer(item, w3):
 
 
 class TransferTradeExporter:
-    def __init__(self, provider_url, max_workers=2):
+    def __init__(self, provider_url, erc20_tokens_file=None, max_workers=2):
         self.max_workers = max_workers
         self.w3 = Web3(Web3.HTTPProvider(provider_url))
         self.producer = KafkaProducer(bootstrap_servers='172.16.1.21:9092', value_serializer=lambda v: json.dumps(v).encode('utf-8'))
@@ -360,12 +357,9 @@ class TransferTradeExporter:
     def shutdown(self):
         self.executor.shutdown()
 
-        # future = self.producer.send('eth_transfer', filtered_item)
-        # self.producer.flush()
-        # print(filtered_item)
 
 def export_kafka():
-    exporter = TransferTradeExporter(provider_url='http://121.199.22.236:6666', max_workers=5)
+    exporter = TransferTradeExporter(provider_url='http://121.199.22.236:6666', max_workers=5, erc20_tokens_file='./RealltimeParse/erc20_tokens.json')
     exporter.load_transactions()
     exporter.execute()
     exporter.shutdown()

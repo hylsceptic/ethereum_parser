@@ -10,21 +10,9 @@ from erc20_abi import ERC20_ABI
 from uniswap_v2_pair_abi import UNIESWP_V2_PAIR_ABI
 from  call_parser import tx_call_trace
 
-def Load_transactions(file_path='transactions.csv'):
-    txs = []
-    with open(file_path, newline='\n') as csvfile:
-        spamreader = csv.reader(csvfile, delimiter=',')
-        fields = next(spamreader)
-        for row in spamreader:
-            if len(row) == 0: continue
-            tx = {}
-            for idx in range(len(fields)):
-                tx[fields[idx]] = row[idx]
-            
-            tx['value'] = int(tx['value'])
-            txs.append(tx)
-    
-    return txs, fields
+from executor.bounded_executor import BoundedExecutor
+from executor.fail_safe_executor import FailSafeExecutor
+
 
 WETH_ADDR = '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2'
 
@@ -262,17 +250,6 @@ def parse_uniswap_v1_trade(item, w3):
 
     return filtered_item
 
-def dump_result(filtered_item):
-    if filtered_item is None:
-        return
-    print(len(filtered_item.keys()))
-    try:
-        print(filtered_item)
-    except UnicodeEncodeError as e:
-        filtered_item['receive_token'] = filtered_item['receive_token'].encode("utf-8")
-        filtered_item['send_token'] = filtered_item['send_token'].encode("utf-8")
-        print(filtered_item)
-    print()
 
 
 def parse_erc20_transfer(item, w3):
@@ -296,15 +273,39 @@ def parse_erc20_transfer(item, w3):
     return filtered_item
 
 
-class KafkaExporter:
-    def __init__(self):
-        self.w3 = Web3(Web3.HTTPProvider('http://121.199.22.236:6666'))
+class TransferTradeExporter:
+    def __init__(self, provider_url, max_workers=2):
+        self.max_workers = max_workers
+        self.w3 = Web3(Web3.HTTPProvider(provider_url))
         self.producer = KafkaProducer(bootstrap_servers='172.16.1.21:9092', value_serializer=lambda v: json.dumps(v).encode('utf-8'))
+        self.executor = FailSafeExecutor(BoundedExecutor(1, self.max_workers))
     
-    def export_item(self, item, fields):
+    def load_transactions(self, file_path='transactions.csv'):
+        self.txs = []
+        with open(file_path, newline='\n') as csvfile:
+            spamreader = csv.reader(csvfile, delimiter=',')
+            self.fields = next(spamreader)
+            for row in spamreader:
+                if len(row) == 0: continue
+                tx = {}
+                for idx in range(len(self.fields)):
+                    tx[self.fields[idx]] = row[idx]
+                
+                tx['value'] = int(tx['value'])
+                self.txs.append(tx)
+    
+    def execute(self):
+        for tx in self.txs:
+            self.executor.submit(self._export_item, tx, self.fields)
+    
+    
+    def _export_item(self, item, fields):
+        ## ERC20 transfer.
         if item['input'].startswith('0xa9059cbb'): # erc20:transfer
             filtered_item = parse_erc20_transfer(item, self.w3)
+            self.dump_result(filtered_item, 'tranfer')
         
+        ## Uniswap V2
         elif (item['input'].startswith('0x7ff36ab5') or item['input'].startswith('0xfb3bdb41') 
                 or item['input'].startswith('0x8803dbee') or item['input'].startswith('0x38ed1739')
                 or item['input'].startswith('0x18cbafe5') or item['input'].startswith('0x4a25d94a')
@@ -313,22 +314,15 @@ class KafkaExporter:
                 or item['input'].startswith('0xb6f9de95') or item['input'].startswith('0xdb3e2198')
                 or item['input'].startswith('0xf28c0498')):
             filtered_item = parse_uniswap_trade(item, self.w3)
-            dump_result(filtered_item)
+            self.dump_result(filtered_item, 'trade')
 
+        ## Uniswap V3
         elif (item['input'].startswith('0xac9650d8')):
             filtered_items = parse_multi_call(item, w3)
             for filtered_item in filtered_items:
-                if filtered_item is None:
-                    continue
-                print(len(filtered_item.keys()))
-                try:
-                    print(filtered_item)
-                except UnicodeEncodeError as e:
-                    filtered_item['receive_token'] = filtered_item['receive_token'].encode("utf-8")
-                    filtered_item['send_token'] = filtered_item['send_token'].encode("utf-8")
-                    print(filtered_item)
-                print()
+                self.dump_result(filtered_item, 'trade')
         
+        ## Uniswap V1
         elif (item['input'].startswith('0xf39b5b9b') or item['input'].startswith('0xad65d76d')
                 or item['input'].startswith('0xf552d91b') or item['input'].startswith('0x7237e031')
                 or item['input'].startswith('0x6b1d4db7') or item['input'].startswith('0x0b573638')
@@ -336,31 +330,45 @@ class KafkaExporter:
                 or item['input'].startswith('0x95e3c50b') or item['input'].startswith('0xddf7e1a7')
                 or item['input'].startswith('0xb040d545') or item['input'].startswith('0xf3c0efe9')):
             filtered_item = parse_uniswap_v1_trade(item, w3)
-            print(len(filtered_item.keys()))
-            try:
-                print(filtered_item)
-            except UnicodeEncodeError as e:
-                filtered_item['receive_token'] = filtered_item['receive_token'].encode("utf-8")
-                filtered_item['send_token'] = filtered_item['send_token'].encode("utf-8")
-                print(filtered_item)
-            print()
+            self.dump_result(filtered_item, 'trade')
 
+        ## Ether transfer
         else:
             if item['value'] > 0:
                 filtered_item = parse_eth_transfer(item)
-                # print(filtered_item)
+                self.dump_result(filtered_item, 'transfer')
             else:
                 return
+        
+        
+    def dump_result(self, filtered_item, topic):
+        if filtered_item is None:
+            return
+        print(len(filtered_item.keys()))
+        try:
+            print(filtered_item)
+        except UnicodeEncodeError as e:
+            if topic == 'trade':
+                filtered_item['receive_token'] = filtered_item['receive_token'].encode("utf-8")
+                filtered_item['send_token'] = filtered_item['send_token'].encode("utf-8")
+            elif topic == 'transfer':
+                filtered_item['symbol'] = filtered_item['symbol'].encode("utf-8")
+            print(filtered_item)
+
+        print()
+        
+    def shutdown(self):
+        self.executor.shutdown()
 
         # future = self.producer.send('eth_transfer', filtered_item)
         # self.producer.flush()
         # print(filtered_item)
 
 def export_kafka():
-    exporter = KafkaExporter()
-
-    txs, fields = Load_transactions()
-    for item in txs:
-        exporter.export_item(item, fields)
+    exporter = TransferTradeExporter(provider_url='http://121.199.22.236:6666', max_workers=5)
+    exporter.load_transactions()
+    exporter.execute()
+    exporter.shutdown()
+    
 
 export_kafka()

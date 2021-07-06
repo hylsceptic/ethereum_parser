@@ -6,10 +6,10 @@ import os.path as osp
 import csv
 import pprint as pp
 from web3_input_decoder import decode_constructor, decode_function
-from erc20_abi import ERC20_ABI
-from uniswap_v2_pair_abi import UNIESWP_V2_PAIR_ABI
+from abis.erc20_abi import ERC20_ABI
+from abis.uniswap_v2_pair_abi import UNIESWP_V2_PAIR_ABI
 from call_parser import tx_call_trace
-from erc2_parser import parse_token
+from erc20_pareser.erc20_parser import parse_token
 
 from executor.bounded_executor import BoundedExecutor
 from executor.fail_safe_executor import FailSafeExecutor

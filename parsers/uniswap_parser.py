@@ -1,29 +1,34 @@
-from kafka import KafkaProducer
 from web3 import Web3
-import json
-import os
-import os.path as osp
-import csv
-import pprint as pp
-from web3_input_decoder import decode_constructor, decode_function
-from abis.erc20_abi import ERC20_ABI
-from abis.uniswap_v2_pair_abi import UNIESWP_V2_PAIR_ABI
 from call_parser import tx_call_trace
 from erc20_buffer.erc20_parser import parse_token
 
-from executor.bounded_executor import BoundedExecutor
-from executor.fail_safe_executor import FailSafeExecutor
-
 WETH_ADDR = '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2'
+
+WETH_EVT_DEPOSIT = '0xe1fffcc4923d04b559f4d29a8bfc6cda04eb5b0d3c460751c2402c5c5cc9109c'
+ERC2_EVT_TRANSFER = '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef'
 
 UNISWAP_FORKS_ROUTERS = {
     '0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D' : 'UniSwapV2',
     '0xd9e1cE17f2641f24aE83637ab66a2cca9C378B9F' : 'SushiSwap',
     '0xE6E90bC9F3b95cdB69F48c7bFdd0edE1386b135a' : 'UnicSwapV2'
 }
-WETH_EVT_DEPOSIT = '0xe1fffcc4923d04b559f4d29a8bfc6cda04eb5b0d3c460751c2402c5c5cc9109c'
-ERC2_EVT_TRANSFER = '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef'
 
+def is_v1_call(call):
+    return (call.startswith('0xf39b5b9b') or call.startswith('0xad65d76d')
+            or call.startswith('0xf552d91b') or call.startswith('0x7237e031')
+            or call.startswith('0x6b1d4db7') or call.startswith('0x0b573638')
+            or call.startswith('0xd4e4841d') or call.startswith('0x013efd8b')
+            or call.startswith('0x95e3c50b') or call.startswith('0xddf7e1a7')
+            or call.startswith('0xb040d545') or call.startswith('0xf3c0efe9'))
+
+def is_v2_v3_normal_call(call):
+    return (call.startswith('0x7ff36ab5') or call.startswith('0xfb3bdb41') 
+            or call.startswith('0x8803dbee') or call.startswith('0x38ed1739')
+            or call.startswith('0x18cbafe5') or call.startswith('0x4a25d94a')
+            or call.startswith('0x791ac947') or call.startswith('0x5c11d795')
+            or call.startswith('0xc04b8d59') or call.startswith('0x414bf389')
+            or call.startswith('0xb6f9de95') or call.startswith('0xdb3e2198')
+            or call.startswith('0xf28c0498'))
 
 SwapExactETHForTokens = '0x7ff36ab5'
 swapETHForExactTokens = '0xfb3bdb41'
@@ -38,25 +43,6 @@ uniswapV3RouterexactInput = '0xc04b8d59'
 uniswapV3RouterexactInputSingle = '0x414bf389'
 uniswapV3RouterExactOutputSingle = '0xdb3e2198'
 uniswapV3RouterExactOutput = '0xf28c0498'
-
-client_url = 'http://121.199.22.236:6666'
-w3 = Web3(Web3.HTTPProvider(client_url))
-
-def erc20_contract(address):
-    return w3.eth.contract(address=address, abi=ERC20_ABI)
-
-def usv2p_contract(address):
-    return w3.eth.contract(address=address, abi=UNIESWP_V2_PAIR_ABI)
-
-
-def parse_eth_transfer(item):
-    filtered_item = {key : item[key] for key in ['hash', 'block_timestamp', 'value', 'from_address', 'to_address']}
-    filtered_item['symbol'] = 'ETH'
-    filtered_item['value'] /= 1e18
-    filtered_item['decimals'] = 18
-    filtered_item['contract_address'] = '0x'
-    return filtered_item
-
 
 def parse_multi_call(item, w3):
     call_data = item['input']
@@ -190,7 +176,7 @@ def parse_uniswap_trade(item, w3):
     return filtered_item
 
 
-def parse_uniswap_v1_trade(item, w3):
+def parse_uniswap_v1_trade(item, w3, client_url):
     logs = w3.eth.getTransactionReceipt(item['hash'])['logs']
     if logs == []:return None  ## Error encountered during contract execution [Reverted]
 
@@ -273,117 +259,4 @@ def parse_uniswap_v1_trade(item, w3):
                 filtered_item['send_token_contract_address'] = Web3.toChecksumAddress(tlog['address'])
 
     return filtered_item
-
-
-def parse_erc20_transfer(item, w3):
-    address = Web3.toChecksumAddress(item['to_address'])
-    filtered_item = {key : item[key] for key in ['hash', 'block_timestamp', 'from_address']}
-    rst, (symbol, dec) = parse_token(address, w3)
-    if not rst: return
-    filtered_item['symbol'] = symbol
-    filtered_item['to_address'] = '0x' + item['input'][34:74]
-    filtered_item['value'] = int('0x' + item['input'][74:], 0) / 10 ** dec
-    filtered_item['contract_address'] = item['to_address']
-    filtered_item['decimals'] = dec
-    return filtered_item
-
-
-class TransferTradeExporter:
-    def __init__(self, provider_url, kafka_server, max_workers=2, dump_to='print', is_test='0x'):
-        self.dump_to = dump_to
-        if self.dump_to == 'print':
-            max_workers = 1
-        self.max_workers = max_workers
-        self.w3 = Web3(Web3.HTTPProvider(provider_url))
-        self.producer = KafkaProducer(bootstrap_servers=kafka_server, value_serializer=lambda v: json.dumps(v).encode('utf-8'))
-        self.executor = FailSafeExecutor(BoundedExecutor(1, self.max_workers))
-        self.is_test = is_test
-    
-    def load_transactions(self, file_path='transactions.csv'):
-        self.txs = []
-        with open(file_path, newline='\n') as csvfile:
-            spamreader = csv.reader(csvfile, delimiter=',')
-            self.fields = next(spamreader)
-            for row in spamreader:
-                if len(row) == 0: continue
-                tx = {}
-                for idx in range(len(self.fields)):
-                    tx[self.fields[idx]] = row[idx]
-                
-                tx['value'] = int(tx['value'])
-                self.txs.append(tx)
-    
-    def execute(self):
-        for tx in self.txs:
-            self.executor.submit(self._export_item, tx, self.fields)
-    
-    
-    def _export_item(self, item, fields):
-        ## ERC20 transfer.
-        if item['input'].startswith('0xa9059cbb'): # erc20:transfer
-            filtered_item = parse_erc20_transfer(item, self.w3)
-            self.dump_result(filtered_item, 'eth_transfer')
-        
-        ## Uniswap V2, V3
-        elif (item['input'].startswith('0x7ff36ab5') or item['input'].startswith('0xfb3bdb41') 
-                or item['input'].startswith('0x8803dbee') or item['input'].startswith('0x38ed1739')
-                or item['input'].startswith('0x18cbafe5') or item['input'].startswith('0x4a25d94a')
-                or item['input'].startswith('0x791ac947') or item['input'].startswith('0x5c11d795')
-                or item['input'].startswith('0xc04b8d59') or item['input'].startswith('0x414bf389')
-                or item['input'].startswith('0xb6f9de95') or item['input'].startswith('0xdb3e2198')
-                or item['input'].startswith('0xf28c0498')):
-            filtered_item = parse_uniswap_trade(item, self.w3)
-            self.dump_result(filtered_item, 'dex_trade')
-
-        ## Uniswap V3 multicall
-        elif (item['input'].startswith('0xac9650d8')):
-            filtered_items = parse_multi_call(item, w3)
-            for filtered_item in filtered_items:
-                self.dump_result(filtered_item, 'dex_trade')
-        
-        ## Uniswap V1
-        elif (item['input'].startswith('0xf39b5b9b') or item['input'].startswith('0xad65d76d')
-                or item['input'].startswith('0xf552d91b') or item['input'].startswith('0x7237e031')
-                or item['input'].startswith('0x6b1d4db7') or item['input'].startswith('0x0b573638')
-                or item['input'].startswith('0xd4e4841d') or item['input'].startswith('0x013efd8b')
-                or item['input'].startswith('0x95e3c50b') or item['input'].startswith('0xddf7e1a7')
-                or item['input'].startswith('0xb040d545') or item['input'].startswith('0xf3c0efe9')):
-            filtered_item = parse_uniswap_v1_trade(item, w3)
-            self.dump_result(filtered_item, 'dex_trade')
-
-        ## Ether transfer
-        else:
-            if item['value'] > 0:
-                filtered_item = parse_eth_transfer(item)
-                self.dump_result(filtered_item, 'eth_transfer')
-            else:
-                return
-        
-        
-    def dump_result(self, filtered_item, topic):
-        if filtered_item is None:
-            return
-        if self.dump_to == 'kafka':
-            future = self.producer.send(topic + self.is_test, filtered_item)
-            self.producer.flush()
-        elif self.dump_to == 'print':
-            # print(len(filtered_item.keys()))
-            # print(f'{topic + self.is_test}:', end=' ')
-            if topic == 'eth_transfer':
-                assert(len(filtered_item.keys()) == 8)
-            if topic == 'dex_trade':
-                assert(len(filtered_item.keys()) == 15)
-            try:
-                pp.pprint(filtered_item)
-            except UnicodeEncodeError as e:
-                if topic == 'dex_trade':
-                    filtered_item['receive_token'] = filtered_item['receive_token'].encode("utf-8")
-                    filtered_item['send_token'] = filtered_item['send_token'].encode("utf-8")
-                elif topic == 'eth_transfer':
-                    filtered_item['symbol'] = filtered_item['symbol'].encode("utf-8")
-                pp.pprint(filtered_item)
-            print()
-        
-    def shutdown(self):
-        self.executor.shutdown()
 

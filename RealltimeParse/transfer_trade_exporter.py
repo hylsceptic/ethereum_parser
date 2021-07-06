@@ -14,7 +14,6 @@ from erc2_parser import parse_token
 from executor.bounded_executor import BoundedExecutor
 from executor.fail_safe_executor import FailSafeExecutor
 
-
 WETH_ADDR = '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2'
 
 UNISWAP_FORKS_ROUTERS = {
@@ -55,7 +54,7 @@ def parse_eth_transfer(item):
     filtered_item['symbol'] = 'ETH'
     filtered_item['value'] /= 1e18
     filtered_item['decimals'] = 18
-    filtered_item['contract_address'] = 'None'
+    filtered_item['contract_address'] = '0x'
     return filtered_item
 
 
@@ -90,7 +89,7 @@ def parse_uniswap_trade(item, w3):
         if Web3.toChecksumAddress(item['to_address']) in UNISWAP_FORKS_ROUTERS.keys():
             filtered_item['dex'] = UNISWAP_FORKS_ROUTERS[Web3.toChecksumAddress(item['to_address'])]
         else:
-            print(item['to_address'])
+            print("Unknown dex address:", item['to_address'], "Lookup on ethersan.")
             filtered_item['dex'] = 'UNKNOWN'
 
 
@@ -105,7 +104,8 @@ def parse_uniswap_trade(item, w3):
             ):
         filtered_item['receive_address'] = Web3.toChecksumAddress('0x' + item['input'][162 : 202])
         filtered_item['send_token'] = 'ETH'
-        filtered_item['send_token_address'] = ''
+        filtered_item['send_decimals'] = 18
+        filtered_item['send_token_contract_address'] = '0x'
         for log in logs:
             if (Web3.toChecksumAddress(log['address']) == WETH_ADDR 
                     and log['topics'][0].hex() == WETH_EVT_DEPOSIT):
@@ -123,7 +123,8 @@ def parse_uniswap_trade(item, w3):
             ):
         filtered_item['receive_address'] = Web3.toChecksumAddress('0x' + item['input'][226 : 266])
         filtered_item['receive_token'] = 'ETH'
-        filtered_item['receive_token_address'] = ''
+        filtered_item['receive_decimals'] = 18
+        filtered_item['receive_token_contract_address'] = '0x'
         for log in logs:
             if (Web3.toChecksumAddress(log['address']) == WETH_ADDR
                     and len(log['topics']) >= 3 and Web3.toChecksumAddress('0x' + log['topics'][2].hex()[-40:]) == Web3.toChecksumAddress(item['to_address'])):
@@ -150,6 +151,8 @@ def parse_uniswap_trade(item, w3):
         
         if token_in_addr == WETH_ADDR:
             filtered_item['send_token'] = 'ETH'
+            filtered_item['send_decimals'] = 18
+            filtered_item['send_token_contract_address'] = '0x'
             filtered_item['send_value'] = 0
             for log in logs:
                 if (Web3.toChecksumAddress(log['address']) == WETH_ADDR 
@@ -158,6 +161,7 @@ def parse_uniswap_trade(item, w3):
         
         if token_out_addr == WETH_ADDR:
             filtered_item['receive_token'] = 'ETH'
+            filtered_item['receive_decimals'] = 18
             for log in logs:
                 if (Web3.toChecksumAddress(log['address']) == WETH_ADDR
                         and len(log['topics']) >= 3 and Web3.toChecksumAddress('0x' + log['topics'][2].hex()[-40:]) == Web3.toChecksumAddress(item['to_address'])):
@@ -172,14 +176,16 @@ def parse_uniswap_trade(item, w3):
                 token_contract = erc20_contract(tlog['address'])
                 filtered_item['receive_token'] = symbol
                 filtered_item['receive_value'] += int(tlog['data'], 0) / (10 ** dec)
-                filtered_item['receive_token_address'] = Web3.toChecksumAddress(tlog['address'])
+                filtered_item['receive_decimals'] = dec
+                filtered_item['receive_token_contract_address'] = Web3.toChecksumAddress(tlog['address'])
 
             elif Web3.toChecksumAddress('0x' + tlog['topics'][1].hex()[-40:]) == Web3.toChecksumAddress(item['from_address']):
                 rst, (symbol, dec) = parse_token(Web3.toChecksumAddress(tlog['address']), w3)
                 if not rst: return
                 filtered_item['send_token'] = symbol
                 filtered_item['send_value'] += int(tlog['data'], 0) / (10 ** dec)
-                filtered_item['send_token_address'] = Web3.toChecksumAddress(tlog['address'])
+                filtered_item['send_decimals'] = dec
+                filtered_item['send_token_contract_address'] = Web3.toChecksumAddress(tlog['address'])
 
     return filtered_item
 
@@ -203,7 +209,8 @@ def parse_uniswap_v1_trade(item, w3):
         or item['input'].startswith('0x0b573638')              # uniswap v1: ethToTokenTransferOutput
             ):
         filtered_item['send_token'] = 'ETH'
-        filtered_item['send_token_address'] = ''
+        filtered_item['send_decimals'] = 18
+        filtered_item['send_token_contract_address'] = '0x'
         calls = tx_call_trace(item['hash'], client_url)
         for call in calls:
             if call['to'] == Web3.toChecksumAddress(item['to_address']):
@@ -229,7 +236,8 @@ def parse_uniswap_v1_trade(item, w3):
             or item['input'].startswith('0xd4e4841d')               # uniswap v1: tokenToEthTransferOutput
             ):
             filtered_item['receive_token'] = 'ETH'
-            filtered_item['receive_token_adderess'] = ''
+            filtered_item['receive_decimals'] = 18
+            filtered_item['receive_token_adderess'] = '0x'
             if item['input'].startswith('0x013efd8b') or item['input'].startswith('0x95e3c50b'):
                 filtered_item['receive_address'] = filtered_item['send_address']
             else:
@@ -250,7 +258,8 @@ def parse_uniswap_v1_trade(item, w3):
                 else:
                     filtered_item['receive_token'] = symbol
                 filtered_item['receive_value'] += int(tlog['data'], 0) / (10 ** dec)
-                filtered_item['receive_token_address'] = Web3.toChecksumAddress(tlog['address'])
+                filtered_item['receive_decimals'] = dec
+                filtered_item['receive_token_contract_address'] = Web3.toChecksumAddress(tlog['address'])
 
             elif Web3.toChecksumAddress('0x' + tlog['topics'][1].hex()[-40:]) == Web3.toChecksumAddress(item['from_address']):
                 rst, (symbol, dec) = parse_token(Web3.toChecksumAddress(tlog['address']), w3)
@@ -260,7 +269,8 @@ def parse_uniswap_v1_trade(item, w3):
                 else:
                     filtered_item['send_token'] = symbol
                 filtered_item['send_value'] += int(tlog['data'], 0) / (10 ** dec)
-                filtered_item['send_token_address'] = Web3.toChecksumAddress(tlog['address'])
+                filtered_item['send_decimals'] = dec
+                filtered_item['send_token_contract_address'] = Web3.toChecksumAddress(tlog['address'])
 
     return filtered_item
 
@@ -279,11 +289,15 @@ def parse_erc20_transfer(item, w3):
 
 
 class TransferTradeExporter:
-    def __init__(self, provider_url, erc20_tokens_file=None, max_workers=2):
+    def __init__(self, provider_url, kafka_server, max_workers=2, dump_to='print', is_test='0x'):
+        self.dump_to = dump_to
+        if self.dump_to == 'print':
+            max_workers = 1
         self.max_workers = max_workers
         self.w3 = Web3(Web3.HTTPProvider(provider_url))
-        self.producer = KafkaProducer(bootstrap_servers='172.16.1.21:9092', value_serializer=lambda v: json.dumps(v).encode('utf-8'))
+        self.producer = KafkaProducer(bootstrap_servers=kafka_server, value_serializer=lambda v: json.dumps(v).encode('utf-8'))
         self.executor = FailSafeExecutor(BoundedExecutor(1, self.max_workers))
+        self.is_test = is_test
     
     def load_transactions(self, file_path='transactions.csv'):
         self.txs = []
@@ -308,9 +322,9 @@ class TransferTradeExporter:
         ## ERC20 transfer.
         if item['input'].startswith('0xa9059cbb'): # erc20:transfer
             filtered_item = parse_erc20_transfer(item, self.w3)
-            self.dump_result(filtered_item, 'tranfer')
+            self.dump_result(filtered_item, 'eth_transfer')
         
-        ## Uniswap V2
+        ## Uniswap V2, V3
         elif (item['input'].startswith('0x7ff36ab5') or item['input'].startswith('0xfb3bdb41') 
                 or item['input'].startswith('0x8803dbee') or item['input'].startswith('0x38ed1739')
                 or item['input'].startswith('0x18cbafe5') or item['input'].startswith('0x4a25d94a')
@@ -319,13 +333,13 @@ class TransferTradeExporter:
                 or item['input'].startswith('0xb6f9de95') or item['input'].startswith('0xdb3e2198')
                 or item['input'].startswith('0xf28c0498')):
             filtered_item = parse_uniswap_trade(item, self.w3)
-            self.dump_result(filtered_item, 'trade')
+            self.dump_result(filtered_item, 'dex_trade')
 
-        ## Uniswap V3
+        ## Uniswap V3 multicall
         elif (item['input'].startswith('0xac9650d8')):
             filtered_items = parse_multi_call(item, w3)
             for filtered_item in filtered_items:
-                self.dump_result(filtered_item, 'trade')
+                self.dump_result(filtered_item, 'dex_trade')
         
         ## Uniswap V1
         elif (item['input'].startswith('0xf39b5b9b') or item['input'].startswith('0xad65d76d')
@@ -335,13 +349,13 @@ class TransferTradeExporter:
                 or item['input'].startswith('0x95e3c50b') or item['input'].startswith('0xddf7e1a7')
                 or item['input'].startswith('0xb040d545') or item['input'].startswith('0xf3c0efe9')):
             filtered_item = parse_uniswap_v1_trade(item, w3)
-            self.dump_result(filtered_item, 'trade')
+            self.dump_result(filtered_item, 'dex_trade')
 
         ## Ether transfer
         else:
             if item['value'] > 0:
                 filtered_item = parse_eth_transfer(item)
-                self.dump_result(filtered_item, 'transfer')
+                self.dump_result(filtered_item, 'eth_transfer')
             else:
                 return
         
@@ -349,28 +363,27 @@ class TransferTradeExporter:
     def dump_result(self, filtered_item, topic):
         if filtered_item is None:
             return
-        print(len(filtered_item.keys()))
-        try:
-            print(filtered_item)
-        except UnicodeEncodeError as e:
-            if topic == 'trade':
-                filtered_item['receive_token'] = filtered_item['receive_token'].encode("utf-8")
-                filtered_item['send_token'] = filtered_item['send_token'].encode("utf-8")
-            elif topic == 'transfer':
-                filtered_item['symbol'] = filtered_item['symbol'].encode("utf-8")
-            print(filtered_item)
-
-        print()
+        if self.dump_to == 'kafka':
+            future = self.producer.send(topic + self.is_test, filtered_item)
+            self.producer.flush()
+        elif self.dump_to == 'print':
+            # print(len(filtered_item.keys()))
+            # print(f'{topic + self.is_test}:', end=' ')
+            if topic == 'eth_transfer':
+                assert(len(filtered_item.keys()) == 8)
+            if topic == 'dex_trade':
+                assert(len(filtered_item.keys()) == 15)
+            try:
+                pp.pprint(filtered_item)
+            except UnicodeEncodeError as e:
+                if topic == 'dex_trade':
+                    filtered_item['receive_token'] = filtered_item['receive_token'].encode("utf-8")
+                    filtered_item['send_token'] = filtered_item['send_token'].encode("utf-8")
+                elif topic == 'eth_transfer':
+                    filtered_item['symbol'] = filtered_item['symbol'].encode("utf-8")
+                pp.pprint(filtered_item)
+            print()
         
     def shutdown(self):
         self.executor.shutdown()
 
-
-def export_kafka():
-    exporter = TransferTradeExporter(provider_url='http://121.199.22.236:6666', max_workers=5, erc20_tokens_file='./RealltimeParse/erc20_tokens.json')
-    exporter.load_transactions()
-    exporter.execute()
-    exporter.shutdown()
-    
-
-export_kafka()

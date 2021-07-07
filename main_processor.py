@@ -10,6 +10,7 @@ from erc20_buffer.erc20_parser import parse_token
 from parsers.uniswap_parser import parse_multi_call, parse_uniswap_trade, parse_uniswap_v1_trade, is_v1_call, is_v2_v3_normal_call
 from parsers.curve_parsser import curve_parser
 from parsers.token_transfer_parser import parse_eth_transfer, parse_erc20_transfer
+from result_checker import check_result
 
 from executor.bounded_executor import BoundedExecutor
 from executor.fail_safe_executor import FailSafeExecutor
@@ -85,6 +86,7 @@ class MainProcessor:
     def dump_result(self, filtered_item, topic):
         if filtered_item is None:
             return
+        check_result(filtered_item, topic)
         self.exporter.dump(filtered_item, topic)
 
 

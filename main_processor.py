@@ -39,6 +39,8 @@ class MainProcessor:
                     tx[self.fields[idx]] = row[idx]
                 
                 tx['value'] = int(tx['value'])
+                tx['block_timestamp'] = int(tx['block_timestamp'])
+                
                 self.txs.append(tx)
     
     def execute(self):

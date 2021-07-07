@@ -1,6 +1,31 @@
-transfer_columns = ['hash', 'block_timestamp', 'from_address', 'symbol', 'to_address', 'value', 'contract_address', 'decimals']
+transfer_columns = {
+    'hash' : str, 
+    'block_timestamp' : int,
+    'from_address' : str,
+    'to_address' : str,
+    'contract_address' : str,
+    'symbol' : str,
+    'decimals' : int,
+    'value' : float,
+}
 
-trade_columns = ['hash', 'block_timestamp', 'send_address', 'dex', 'method_call', 'contract_address', 'receive_value', 'send_value', 'receive_address', 'receive_token', 'receive_decimals', 'send_token', 'send_decimals', 'send_token_contract_address', 'receive_token_contract_address']
+trade_columns = {
+    'hash' : str,
+    'block_timestamp' : int,
+    'dex' : str,
+    'method_call' : str,
+    'contract_address' : str,
+    'send_token' : str,
+    'send_decimals' : int,
+    'send_address' : str,
+    'send_token_contract_address' : str,
+    'send_value' : float,
+    'receive_address' : str,
+    'receive_token' : str,
+    'receive_decimals' : int,
+    'receive_token_contract_address' : str,
+    'receive_value' : float,
+}
 
 def check_result(item, topic):
     if 'eth_transfer' in topic:
@@ -10,8 +35,12 @@ def check_result(item, topic):
     else:
         raise Exception("[error] topic error.")
     
-    for column in columns:
-        if not column in item.keys():
+    for key in columns.keys():
+        if not key in item.keys():
             print("topic: ", topic, "Tx Hash:", item['hash'])
-            print(item.keys())
-            raise Exception(f"[error] {column} Does not exist.")
+            print(item)
+            raise Exception(f"[error] {key} Does not exist.")
+        if type(item[key]) != columns[key]:
+            print("topic: ", topic, "Tx Hash:", item['hash'])
+            print(item)
+            raise Exception(f"[error] {key} with type {type(item[key])} is not {columns[key]}.")

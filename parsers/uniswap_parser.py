@@ -5,10 +5,11 @@ from erc20_buffer.erc20_parser import parse_token
 WETH_ADDR = '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2'
 
 WETH_EVT_DEPOSIT = '0xe1fffcc4923d04b559f4d29a8bfc6cda04eb5b0d3c460751c2402c5c5cc9109c'
-ERC2_EVT_TRANSFER = '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef'
+ERC20_EVT_TRANSFER = '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef'
 
 UNISWAP_FORKS_ROUTERS = {
     '0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D' : 'UniSwapV2',
+    '0xf164fC0Ec4E93095b804a4795bBe1e041497b92a' : 'UniswapV2',
     '0xd9e1cE17f2641f24aE83637ab66a2cca9C378B9F' : 'SushiSwap',
     '0xE6E90bC9F3b95cdB69F48c7bFdd0edE1386b135a' : 'UnicSwapV2'
 }
@@ -131,8 +132,8 @@ def parse_uniswap_trade(item, w3):
         else:
             filtered_item['receive_address'] = Web3.toChecksumAddress('0x' + item['input'][162 : 202])
             path_len = int('0x' + item['input'][394 : 458], 0)
-            token_in_addr = Web3.toChecksumAddress('0x' + item['input'][458 : 498])
-            token_out_addr = Web3.toChecksumAddress('0x' + item['input'][458 + path_len * 2 - 40 : 458 + path_len * 2])
+            token_out_addr = Web3.toChecksumAddress('0x' + item['input'][458 : 498])
+            token_in_addr = Web3.toChecksumAddress('0x' + item['input'][458 + path_len * 2 - 40 : 458 + path_len * 2])
         
         
         if token_in_addr == WETH_ADDR:
@@ -159,7 +160,7 @@ def parse_uniswap_trade(item, w3):
         if (len(tlog['topics']) >= 3 and tlog['topics'][0].hex() == ERC20_EVT_TRANSFER):
             if Web3.toChecksumAddress('0x' + tlog['topics'][2].hex()[-40:]) == Web3.toChecksumAddress(filtered_item['receive_address']):
                 rst, (symbol, dec) = parse_token(Web3.toChecksumAddress(tlog['address']), w3)
-                if not rst: return
+                if not rst: return None
                 filtered_item['receive_token'] = symbol
                 filtered_item['receive_value'] += int(tlog['data'], 0) / (10 ** dec)
                 filtered_item['receive_decimals'] = dec
@@ -167,7 +168,7 @@ def parse_uniswap_trade(item, w3):
 
             elif Web3.toChecksumAddress('0x' + tlog['topics'][1].hex()[-40:]) == Web3.toChecksumAddress(item['from_address']):
                 rst, (symbol, dec) = parse_token(Web3.toChecksumAddress(tlog['address']), w3)
-                if not rst: return
+                if not rst: return None
                 filtered_item['send_token'] = symbol
                 filtered_item['send_value'] += int(tlog['data'], 0) / (10 ** dec)
                 filtered_item['send_decimals'] = dec

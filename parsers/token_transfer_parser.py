@@ -17,7 +17,7 @@ def parse_erc20_transfer(item, w3):
     if not rst: return
     filtered_item['symbol'] = symbol
     filtered_item['to_address'] = '0x' + item['input'][34:74]
-    filtered_item['value'] = int('0x' + item['input'][74:], 0) / 10 ** dec
+    filtered_item['value'] = int('0x' + item['input'][74 : 138], 0) / 10 ** dec
     filtered_item['contract_address'] = item['to_address']
     filtered_item['decimals'] = dec
     return filtered_item

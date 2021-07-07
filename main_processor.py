@@ -8,11 +8,13 @@ from abis.erc20_abi import ERC20_ABI
 from abis.uniswap_v2_pair_abi import UNIESWP_V2_PAIR_ABI
 from erc20_buffer.erc20_parser import parse_token
 from parsers.uniswap_parser import parse_multi_call, parse_uniswap_trade, parse_uniswap_v1_trade, is_v1_call, is_v2_v3_normal_call
+from parsers.curve_parsser import curve_parser
 from parsers.token_transfer_parser import parse_eth_transfer, parse_erc20_transfer
 
 from executor.bounded_executor import BoundedExecutor
 from executor.fail_safe_executor import FailSafeExecutor
 
+csv.field_size_limit(100000000)
 
 class MainProcessor:
     def __init__(self, provider_url, exporter, max_workers=2):
@@ -44,6 +46,8 @@ class MainProcessor:
     
     
     def _export_item(self, item, fields):
+        if item['to_address'] == '': # contract creation.
+            return
         ## ERC20 transfer.
         if item['input'].startswith('0xa9059cbb'): # erc20:transfer
             filtered_item = parse_erc20_transfer(item, self.w3)
@@ -64,6 +68,10 @@ class MainProcessor:
         elif is_v1_call(item['input']):
             filtered_item = parse_uniswap_v1_trade(item, self.w3, self.provider_url)
             self.dump_result(filtered_item, 'dex_trade')
+        
+        ## curve
+        elif item['input'].startswith('0x3df02124') or item['input'].startswith('0xa6417ed6'):
+            curve_parser(item, self.w3)
 
         ## Ether transfer
         else:

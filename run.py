@@ -15,7 +15,8 @@ parser.add_argument('--end', type=int, required=False, default=10000001)
 parser.add_argument('--dest', type=str, required=False, default='print')
 args = parser.parse_args()
 
-
+if args.end == 10000001 and args.start != 10000000:
+    args.end = args.start + 1
 
 
 if __name__ == '__main__':

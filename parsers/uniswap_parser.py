@@ -148,6 +148,7 @@ def parse_uniswap_trade(item, w3):
         if token_out_addr == WETH_ADDR:
             filtered_item['receive_token'] = 'ETH'
             filtered_item['receive_decimals'] = 18
+            filtered_item['receive_token_contract_address'] = '0x'
             for log in logs:
                 if (Web3.toChecksumAddress(log['address']) == WETH_ADDR
                         and len(log['topics']) >= 3 and Web3.toChecksumAddress('0x' + log['topics'][2].hex()[-40:]) == Web3.toChecksumAddress(item['to_address'])):
@@ -155,11 +156,10 @@ def parse_uniswap_trade(item, w3):
 
 
     for tlog in logs:
-        if (len(tlog['topics']) >= 3 and tlog['topics'][0].hex() == ERC2_EVT_TRANSFER):
+        if (len(tlog['topics']) >= 3 and tlog['topics'][0].hex() == ERC20_EVT_TRANSFER):
             if Web3.toChecksumAddress('0x' + tlog['topics'][2].hex()[-40:]) == Web3.toChecksumAddress(filtered_item['receive_address']):
                 rst, (symbol, dec) = parse_token(Web3.toChecksumAddress(tlog['address']), w3)
                 if not rst: return
-                token_contract = erc20_contract(tlog['address'])
                 filtered_item['receive_token'] = symbol
                 filtered_item['receive_value'] += int(tlog['data'], 0) / (10 ** dec)
                 filtered_item['receive_decimals'] = dec
@@ -235,7 +235,7 @@ def parse_uniswap_v1_trade(item, w3, client_url):
 
 
     for tlog in logs:
-        if (len(tlog['topics']) >= 3 and tlog['topics'][0].hex() == ERC2_EVT_TRANSFER):
+        if (len(tlog['topics']) >= 3 and tlog['topics'][0].hex() == ERC20_EVT_TRANSFER):
             if Web3.toChecksumAddress('0x' + tlog['topics'][2].hex()[-40:]) == Web3.toChecksumAddress(filtered_item['receive_address']):
                 rst, (symbol, dec) = parse_token(Web3.toChecksumAddress(tlog['address']), w3)
                 if not rst: return

@@ -132,8 +132,12 @@ def parse_uniswap_trade(item, w3):
         else:
             filtered_item['receive_address'] = Web3.toChecksumAddress('0x' + item['input'][162 : 202])
             path_len = int('0x' + item['input'][394 : 458], 0)
-            token_out_addr = Web3.toChecksumAddress('0x' + item['input'][458 : 498])
-            token_in_addr = Web3.toChecksumAddress('0x' + item['input'][458 + path_len * 2 - 40 : 458 + path_len * 2])
+            if item['input'].startswith('0xdb3e2198') or item['input'].startswith('0xf28c0498'):
+                token_out_addr = Web3.toChecksumAddress('0x' + item['input'][458 : 498])
+                token_in_addr = Web3.toChecksumAddress('0x' + item['input'][458 + path_len * 2 - 40 : 458 + path_len * 2])
+            else:
+                token_in_addr = Web3.toChecksumAddress('0x' + item['input'][458 : 498])
+                token_out_addr = Web3.toChecksumAddress('0x' + item['input'][458 + path_len * 2 - 40 : 458 + path_len * 2])
         
         
         if token_in_addr == WETH_ADDR:
@@ -224,7 +228,7 @@ def parse_uniswap_v1_trade(item, w3, client_url):
             ):
             filtered_item['receive_token'] = 'ETH'
             filtered_item['receive_decimals'] = 18
-            filtered_item['receive_token_adderess'] = '0x'
+            filtered_item['receive_token_contract_address'] = '0x'
             if item['input'].startswith('0x013efd8b') or item['input'].startswith('0x95e3c50b'):
                 filtered_item['receive_address'] = filtered_item['send_address']
             else:

@@ -172,7 +172,9 @@ def parse_uniswap_trade(item, w3):
                 filtered_item['receive_decimals'] = dec
                 filtered_item['receive_token_contract_address'] = Web3.toChecksumAddress(tlog['address'])
 
-            elif Web3.toChecksumAddress('0x' + tlog['topics'][1].hex()[-40:]) == Web3.toChecksumAddress(item['from_address']):
+            elif (Web3.toChecksumAddress('0x' + tlog['topics'][1].hex()[-40:]) == Web3.toChecksumAddress(item['from_address'])
+                    or Web3.toChecksumAddress('0x' + tlog['topics'][1].hex()[-40:]) == Web3.toChecksumAddress('0x7a250d5630b4cf539739df2c5dacb4c659f2488d') # because this tx: 0x456e36b7bd640dfa7eaa20de0d965fc0e9ad23c684616ab4a6dba0e7359f9328
+                ):
                 rst, (symbol, dec) = parse_token(Web3.toChecksumAddress(tlog['address']), w3)
                 if not rst: return None
                 filtered_item['send_token'] = symbol

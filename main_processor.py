@@ -47,31 +47,38 @@ class MainProcessor:
     def _export_item(self, item, fields):
         if item['to_address'] == '': # contract creation.
             return
+        
+        call = item['input']
         ## ERC20 transfer.
-        if item['input'].startswith('0xa9059cbb'): # erc20:transfer
+        if call.startswith('0xa9059cbb'): # erc20:transfer
             filtered_item = parse_erc20_transfer(item, self.w3)
             self.dump_result(filtered_item, 'eth_transfer')
         
         ## Uniswap V2, V3
-        elif uniswap_parser.is_v2_v3_normal_call(item['input']):
+        elif uniswap_parser.is_v2_v3_normal_call(call):
             filtered_item = parse_uniswap_trade(item, self.w3)
             self.dump_result(filtered_item, 'dex_trade')
 
         ## Uniswap V3 multicall
-        elif uniswap_parser.is_v3_multi_call(item['input']):
+        elif uniswap_parser.is_v3_multi_call(call):
             filtered_items = parse_multi_call(item, self.w3)
             for filtered_item in filtered_items:
                 self.dump_result(filtered_item, 'dex_trade')
         
         ## Uniswap V1
-        elif uniswap_parser.is_v1_call(item['input']):
+        elif uniswap_parser.is_v1_call(call):
             filtered_item = parse_uniswap_v1_trade(item, self.w3, self.provider_url)
             self.dump_result(filtered_item, 'dex_trade')
         
         ## curve
-        elif curve_parsser.is_swap_call(item['input']):
+        elif curve_parsser.is_swap_call(call):
             filtered_item = parse_curve_swap(item, self.w3)
             self.dump_result(filtered_item, 'dex_trade')
+
+        # ## zeroex
+        # elif zeroex_parser.is_swap_call(call):
+        #     parse_zeroex_swap(item, self.w3)
+            
 
         ## Ether transfer
         else:

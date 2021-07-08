@@ -22,7 +22,7 @@ def parse_curve_swap(item, w3):
             return
         
         pool = pools[contact]
-        filtered_item['dex'] = 'curve' + pool['name']
+        filtered_item['dex'] = 'curve_' + pool['name']
         tokens = pool['coins']
         
         i = int('0x' + item['input'][10 : 74], 0)
@@ -31,7 +31,7 @@ def parse_curve_swap(item, w3):
         if i >= len(tokens) or j >= len(tokens):
             return
         
-        if item['input'].startswith('0x3df02124'):
+        if item['input'].startswith('0x3df02124') or not 'underlying_name' in tokens[i]:
             filtered_item['send_token_contract_address'] = tokens[i]['wrapped_address']
             filtered_item['send_token'] = tokens[i]['name']
             filtered_item['receive_token_contract_address'] = tokens[j]['wrapped_address']

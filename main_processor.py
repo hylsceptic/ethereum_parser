@@ -1,14 +1,10 @@
 from web3 import Web3
-import json
-import os
 import os.path as osp
 import csv
-from web3_input_decoder import decode_constructor, decode_function
-from abis.erc20_abi import ERC20_ABI
-from abis.uniswap_v2_pair_abi import UNIESWP_V2_PAIR_ABI
-from erc20_buffer.erc20_parser import parse_token
-from parsers.uniswap_parser import parse_multi_call, parse_uniswap_trade, parse_uniswap_v1_trade, is_v1_call, is_v2_v3_normal_call
-from parsers.curve_parsser import curve_parser
+from parsers import uniswap_parser
+from parsers.uniswap_parser import parse_multi_call, parse_uniswap_trade, parse_uniswap_v1_trade
+from parsers import curve_parsser
+from parsers.curve_parsser import parse_curve_swap
 from parsers.token_transfer_parser import parse_eth_transfer, parse_erc20_transfer
 from result_checker import check_result
 
@@ -57,24 +53,25 @@ class MainProcessor:
             self.dump_result(filtered_item, 'eth_transfer')
         
         ## Uniswap V2, V3
-        elif is_v2_v3_normal_call(item['input']):
+        elif uniswap_parser.is_v2_v3_normal_call(item['input']):
             filtered_item = parse_uniswap_trade(item, self.w3)
             self.dump_result(filtered_item, 'dex_trade')
 
         ## Uniswap V3 multicall
-        elif (item['input'].startswith('0xac9650d8')):
+        elif uniswap_parser.is_v3_multi_call(item['input']):
             filtered_items = parse_multi_call(item, self.w3)
             for filtered_item in filtered_items:
                 self.dump_result(filtered_item, 'dex_trade')
         
         ## Uniswap V1
-        elif is_v1_call(item['input']):
+        elif uniswap_parser.is_v1_call(item['input']):
             filtered_item = parse_uniswap_v1_trade(item, self.w3, self.provider_url)
             self.dump_result(filtered_item, 'dex_trade')
         
         ## curve
-        elif item['input'].startswith('0x3df02124') or item['input'].startswith('0xa6417ed6'):
-            curve_parser(item, self.w3)
+        elif curve_parsser.is_swap_call(item['input']):
+            filtered_item = parse_curve_swap(item, self.w3)
+            self.dump_result(filtered_item, 'dex_trade')
 
         ## Ether transfer
         else:

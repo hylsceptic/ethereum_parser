@@ -31,6 +31,9 @@ def is_v2_v3_normal_call(call):
             or call.startswith('0xb6f9de95') or call.startswith('0xdb3e2198')
             or call.startswith('0xf28c0498'))
 
+def is_v3_multi_call(call):
+    return call.startswith('0xac9650d8')
+
 SwapExactETHForTokens = '0x7ff36ab5'
 swapETHForExactTokens = '0xfb3bdb41'
 swapExactETHForTokensSupportingFeeOnTransferTokens = '0xb6f9de95'
@@ -138,7 +141,6 @@ def parse_uniswap_trade(item, w3):
             else:
                 token_in_addr = Web3.toChecksumAddress('0x' + item['input'][458 : 498])
                 token_out_addr = Web3.toChecksumAddress('0x' + item['input'][458 + path_len * 2 - 40 : 458 + path_len * 2])
-        
         
         if token_in_addr == WETH_ADDR:
             filtered_item['send_token'] = 'ETH'

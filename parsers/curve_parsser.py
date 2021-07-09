@@ -17,11 +17,11 @@ def parse_curve_swap(item, w3):
     if (item['input'].startswith('0x3df02124')            # exchange
             or item['input'].startswith('0xa6417ed6')     # exchange_underlying
             ):
-        contact = item['to_address']
-        if not contact in pools.keys():
+        contract = item['to_address']
+        if not contract in pools.keys():
             return
         
-        pool = pools[contact]
+        pool = pools[contract]
         filtered_item['dex'] = 'curve_' + pool['name']
         tokens = pool['coins']
         
@@ -42,8 +42,14 @@ def parse_curve_swap(item, w3):
             filtered_item['receive_token_contract_address'] = tokens[j]['underlying_address']
             filtered_item['receive_token'] = tokens[j]['underlying_name']
 
-        filtered_item['send_decimals'] = tokens[i]['decimals']
-        filtered_item['receive_decimals'] = tokens[j]['decimals']
+        if 'decimals' in tokens[i]:
+            filtered_item['send_decimals'] = tokens[i]['decimals']
+        else:
+            filtered_item['send_decimals'] = tokens[i]['wrapped_decimals']
+        if 'decimals' in tokens[j]:
+            filtered_item['receive_decimals'] = tokens[j]['decimals']
+        else:
+            filtered_item['receive_decimals'] = tokens[j]['wrapped_decimals']
         
 
         logs = w3.eth.getTransactionReceipt(item['hash'])['logs']

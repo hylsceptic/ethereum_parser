@@ -96,10 +96,12 @@ def parse_uniswap_trade(item, w3, client_url):
         filtered_item['send_token'] = 'ETH'
         filtered_item['send_decimals'] = 18
         filtered_item['send_token_contract_address'] = '0x'
-        for log in logs:
-            if (Web3.toChecksumAddress(log['address']) == WETH_ADDR 
-                    and log['topics'][0].hex() == WETH_EVT_DEPOSIT):
-                filtered_item['send_value'] += float(int(log['data'], 0) / 1e18)
+        calls = tx_call_trace(item['hash'], client_url)
+        for call in calls:
+            if call['to'] == Web3.toChecksumAddress(item['to_address']):
+                filtered_item['send_value'] += call['value']
+            elif call['to'] == Web3.toChecksumAddress(item['from_address']):
+                filtered_item['send_value'] -= call['value']
         
         path_length = int('0x' + item['input'][290 : 330], 0)
         filtered_item['receive_token_contract_address'] = Web3.toChecksumAddress('0x' + item['input'][290 + 64 * path_length: 330 + 64 * path_length])

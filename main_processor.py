@@ -6,6 +6,8 @@ from parsers.uniswap_parser import parse_multi_call, parse_uniswap_trade, parse_
 from parsers import curve_parsser
 from parsers.curve_parsser import parse_curve_swap
 from parsers.token_transfer_parser import parse_eth_transfer, parse_erc20_transfer
+from parsers import zeroex_parser
+from parsers.zeroex_parser import parse_zeroex_swap
 from result_checker import check_result
 
 from executor.bounded_executor import BoundedExecutor
@@ -14,7 +16,7 @@ from executor.fail_safe_executor import FailSafeExecutor
 csv.field_size_limit(100000000)
 
 class MainProcessor:
-    def __init__(self, provider_url, exporter, max_workers=2):
+    def __init__(self, provider_url, exporter, max_workers=2, test=1):
         self.exporter = exporter
         if exporter.name == 'printer':
             max_workers = 1
@@ -22,6 +24,7 @@ class MainProcessor:
         self.w3 = Web3(Web3.HTTPProvider(provider_url))
         self.provider_url = provider_url
         self.executor = FailSafeExecutor(BoundedExecutor(1, self.max_workers))
+        self.test = test
     
     def load_transactions(self, file_path='transactions.csv'):
         self.txs = []
@@ -41,10 +44,18 @@ class MainProcessor:
     
     def execute(self):
         for tx in self.txs:
-            self.executor.submit(self._export_item, tx, self.fields)
+            self.executor.submit(self._export_item, tx)
     
+    def _export_item(self, item):
+        if self.test:
+            self._paerse_transfer_and_trade(item)
+        else:
+            try:
+                self._paerse_transfer_and_trade(item)
+            except:
+                print("[error]", item['hash'])
     
-    def _export_item(self, item, fields):
+    def _paerse_transfer_and_trade(self, item):
         if item['to_address'] == '': # contract creation.
             return
         
@@ -56,12 +67,12 @@ class MainProcessor:
         
         ## Uniswap V2, V3
         elif uniswap_parser.is_v2_v3_normal_call(call):
-            filtered_item = parse_uniswap_trade(item, self.w3)
+            filtered_item = parse_uniswap_trade(item, self.w3, self.provider_url)
             self.dump_result(filtered_item, 'dex_trade')
 
         ## Uniswap V3 multicall
         elif uniswap_parser.is_v3_multi_call(call):
-            filtered_items = parse_multi_call(item, self.w3)
+            filtered_items = parse_multi_call(item, self.w3, self.provider_url)
             for filtered_item in filtered_items:
                 self.dump_result(filtered_item, 'dex_trade')
         
@@ -75,11 +86,11 @@ class MainProcessor:
             filtered_item = parse_curve_swap(item, self.w3)
             self.dump_result(filtered_item, 'dex_trade')
 
-        # ## zeroex
+        ## zeroex
         # elif zeroex_parser.is_swap_call(call):
+        #     print("0x call")
         #     parse_zeroex_swap(item, self.w3)
-            
-
+        
         ## Ether transfer
         else:
             if item['value'] > 0:
@@ -92,10 +103,11 @@ class MainProcessor:
     def dump_result(self, filtered_item, topic):
         if filtered_item is None:
             return
-        check_result(filtered_item, topic)
-        self.exporter.dump(filtered_item, topic)
+        if check_result(filtered_item, topic):
+            self.exporter.dump(filtered_item, topic)
 
 
     def shutdown(self):
         self.executor.shutdown()
 
+# python run.py --start 12009301 --end 12009401 --dest kafka

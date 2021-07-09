@@ -39,8 +39,10 @@ def check_result(item, topic):
         if not key in item.keys():
             print("topic: ", topic, "Tx Hash:", item['hash'])
             print(item)
-            raise Exception(f"[error] {key} Does not exist.")
+            print(f"[error] missing: {key} Does not exist.")
+            return False
         if type(item[key]) != columns[key]:
-            print("topic: ", topic, "Tx Hash:", item['hash'])
             print(item)
-            raise Exception(f"[error] {key} with type {type(item[key])} is not {columns[key]}.")
+            print(f"[error] key error: {key} with type {type(item[key])} is not {columns[key]}.")
+            return False
+    return True

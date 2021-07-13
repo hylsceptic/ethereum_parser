@@ -48,63 +48,64 @@ class MainProcessor:
     
     def _export_item(self, item):
         if self.test:
-            self._paerse_transfer_and_trade(item)
+            self._parse_transfer_and_trade(item)
         else:
             try:
-                self._paerse_transfer_and_trade(item)
+                self._parse_transfer_and_trade(item)
             except:
                 print("[error]", item['hash'])
     
-    def _paerse_transfer_and_trade(self, item):
+    def _parse_transfer_and_trade(self, item):
         if item['to_address'] == '': # contract creation.
             return
+            
+        logs = [] if item['input'] == '0x' else self.w3.eth.getTransactionReceipt(item['hash'])['logs']
         
         call = item['input']
+
         ## ERC20 transfer.
         if call.startswith('0xa9059cbb'): # erc20:transfer
-            filtered_item = parse_erc20_transfer(item, self.w3)
-            self.dump_result(filtered_item, 'eth_transfer')
+            dex_trade = parse_erc20_transfer(item, self.w3)
+            self.dump_result(dex_trade, 'eth_transfer')
         
         ## Uniswap V2, V3
         elif uniswap_parser.is_v2_v3_normal_call(call):
-            filtered_item = parse_uniswap_trade(item, self.w3, self.provider_url)
-            self.dump_result(filtered_item, 'dex_trade')
+            dex_trade = parse_uniswap_trade(item, self.w3, self.provider_url, logs)
+            self.dump_result(dex_trade, 'dex_trade')
 
         ## Uniswap V3 multicall
         elif uniswap_parser.is_v3_multi_call(call):
-            filtered_items = parse_multi_call(item, self.w3, self.provider_url)
-            for filtered_item in filtered_items:
-                self.dump_result(filtered_item, 'dex_trade')
+            dex_trades = parse_multi_call(item, self.w3, self.provider_url, logs)
+            for dex_trade in dex_trades:
+                self.dump_result(dex_trade, 'dex_trade')
         
         ## Uniswap V1
         elif uniswap_parser.is_v1_call(call):
-            filtered_item = parse_uniswap_v1_trade(item, self.w3, self.provider_url)
-            self.dump_result(filtered_item, 'dex_trade')
+            dex_trade = parse_uniswap_v1_trade(item, self.w3, self.provider_url, logs)
+            self.dump_result(dex_trade, 'dex_trade')
         
         ## curve
         elif curve_parsser.is_swap_call(call):
-            filtered_item = parse_curve_swap(item, self.w3)
-            self.dump_result(filtered_item, 'dex_trade')
+            dex_trade = parse_curve_swap(item, self.w3, logs)
+            self.dump_result(dex_trade, 'dex_trade')
 
-        ## zeroex
-        # elif zeroex_parser.is_swap_call(call):
-        #     print("0x call")
-        #     parse_zeroex_swap(item, self.w3)
-        
         ## Ether transfer
         else:
             if item['value'] > 0:
-                filtered_item = parse_eth_transfer(item)
-                self.dump_result(filtered_item, 'eth_transfer')
-            else:
-                return
+                dex_trade = parse_eth_transfer(item)
+                self.dump_result(dex_trade, 'eth_transfer')
     
+        # zeroex
+        dex_trades = parse_zeroex_swap(item, self.w3, logs)
+        for dex_trade in dex_trades:
+            self.dump_result(dex_trade, 'dex_trade')
     
-    def dump_result(self, filtered_item, topic):
-        if filtered_item is None:
+
+    def dump_result(self, dex_trade, topic):
+        if dex_trade is None:
             return
-        if check_result(filtered_item, topic):
-            self.exporter.dump(filtered_item, topic)
+        if check_result(dex_trade, topic):
+            self.exporter.dump(dex_trade, topic)
 
 
     def shutdown(self):

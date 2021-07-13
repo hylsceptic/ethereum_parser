@@ -37,7 +37,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Process some integers.')
     parser.add_argument('--start', type=int, required=False, default=10000000)
     parser.add_argument('--end', type=int, required=False, default=10000001)
-    parser.add_argument('--dest', type=str, required=False, default='print')
+    parser.add_argument('--dest', type=str, required=False, default='None')
     args = parser.parse_args()
 
     if args.dest == 'kafka':

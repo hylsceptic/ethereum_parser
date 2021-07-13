@@ -48,7 +48,10 @@ uniswapV3RouterexactInputSingle = '0x414bf389'
 uniswapV3RouterExactOutputSingle = '0xdb3e2198'
 uniswapV3RouterExactOutput = '0xf28c0498'
 
-def parse_multi_call(item, w3, client_url):
+def parse_multi_call(item, w3, client_url, logs=None):
+    if logs is None:
+        logs = w3.eth.getTransactionReceipt(item['hash'])['logs']
+    
     call_data = item['input']
     assert(call_data[:10] == '0xac9650d8')
     calls = int('0x' + call_data[74:138], 0)
@@ -62,12 +65,13 @@ def parse_multi_call(item, w3, client_url):
         if (sub_call.startswith('0x414bf389') or sub_call.startswith('0xb6f9de95')
                 or sub_call.startswith('0xdb3e2198') or sub_call.startswith('0xf28c0498')):
             item['input'] = sub_call
-            filtered_items.append(parse_uniswap_trade(item, w3, client_url))
+            filtered_items.append(parse_uniswap_trade(item, w3, client_url, logs))
     return filtered_items
 
 
-def parse_uniswap_trade(item, w3, client_url):
-    logs = w3.eth.getTransactionReceipt(item['hash'])['logs']
+def parse_uniswap_trade(item, w3, client_url, logs=None):
+    if logs is None:
+        logs = w3.eth.getTransactionReceipt(item['hash'])['logs']
     if logs == []:return None  ## Error encountered during contract execution [Reverted]
 
     filtered_item = {key : item[key] for key in ['hash', 'block_timestamp']}
@@ -194,8 +198,9 @@ def parse_uniswap_trade(item, w3, client_url):
     return filtered_item
 
 
-def parse_uniswap_v1_trade(item, w3, client_url):
-    logs = w3.eth.getTransactionReceipt(item['hash'])['logs']
+def parse_uniswap_v1_trade(item, w3, client_url, logs=None):
+    if logs is None:
+        logs = w3.eth.getTransactionReceipt(item['hash'])['logs']
     if logs == []:return None  ## Error encountered during contract execution [Reverted]
 
     filtered_item = {key : item[key] for key in ['hash', 'block_timestamp']}

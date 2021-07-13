@@ -7,7 +7,9 @@ CURVE_EVT_TOKENEXCHANGEUNDERLYING = '0xd013ca23e77a65003c2c659c5442c00c805371b7f
 def is_swap_call(call):
     return call.startswith('0x3df02124') or call.startswith('0xa6417ed6')
 
-def parse_curve_swap(item, w3):
+def parse_curve_swap(item, w3, logs=None):
+    if logs is None:
+        logs = self.w3.eth.getTransactionReceipt(item['hash'])['logs']
     filtered_item = {key : item[key] for key in ['hash', 'block_timestamp']}
     filtered_item['method_call'] = item['input'][:10]
     filtered_item['contract_address'] = item['to_address']
@@ -51,8 +53,6 @@ def parse_curve_swap(item, w3):
         else:
             filtered_item['receive_decimals'] = tokens[j]['wrapped_decimals']
         
-
-        logs = w3.eth.getTransactionReceipt(item['hash'])['logs']
         if logs == []:return None  ## Error encountered during contract execution [Reverted]
         for log in logs:
             if (log['topics'][0].hex() in [CURVE_EVT_TOKENEXCHANGE, CURVE_EVT_TOKENEXCHANGEUNDERLYING]):

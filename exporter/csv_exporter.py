@@ -29,7 +29,14 @@ class CSVExporter:
         row = []
         for column in self.columns[topic]:
             row.append(filtered_item[column])
-        self.writers[topic].writerow(row)
+        try:
+            self.writers[topic].writerow(row)
+        except UnicodeEncodeError as e:
+            for idx, column in enumerate(self.columns[topic]):
+                if 'send_token' == column or 'receive_token' == column:
+                    row[idx] = row[idx].encode("utf-8")
+            
+            self.writers[topic].writerow(row)
 
     def parse_columns(self, topic):
         schema = schemas[topic]

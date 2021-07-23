@@ -1,6 +1,8 @@
 from web3 import Web3
 from parsers.curve_pools import pools
 
+# curve ex start in 2020-01-20
+
 CURVE_EVT_TOKENEXCHANGE = '0x8b3e96f2b889fa771c53c981b40daf005f63f637f1869f707052d15a3dd97140'
 CURVE_EVT_TOKENEXCHANGEUNDERLYING = '0xd013ca23e77a65003c2c659c5442c00c805371b7fc1ebd4c206c41d1536bd90b'
 
